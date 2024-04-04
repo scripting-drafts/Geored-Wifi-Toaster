@@ -7,13 +7,16 @@ import time
 import creds
 import subprocess
 import random
-from pythonping import ping
-from threading import Thread
+import Threads
+import os
+import queue as queue
+
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+os.system('')
 
 class Geored_Wifi_Server:
     def __init__(self):
         self.wifi = pywifi.PyWiFi()
-        self.keepalive_urls = '8.8.8.8', '192.168.1.1', 'google.com'
 
         logging.basicConfig(filename='toast.log', encoding='UTF-8', level=logging.DEBUG, format='%(asctime)s [%(name)s] %(message)s')
         logger = logging.getLogger('WIFI_TOASTER')
@@ -21,21 +24,26 @@ class Geored_Wifi_Server:
 
         self.cycle_len = .6
         self.threads = []
-        
+
+        self.urls = '8.8.8.8', '192.168.1.1', 'google.com'
+
+        # self.keepalive_dict = {
+        #     dns: self.keepalived_dns,
+        #     ip: self.keepalived_ip,
+        #     domain: self.keepalived_dom
+        #     }
+                
     def heartbeats(self):
         return
 
-    def keepalived_dns(self):
-        dns, ip, domain = self.keepalive_urls
-        ping(dns, verbose=True, timeout=10, size=1, count=2, interval=2)
-    
-    def keepalived_ip(self):
-        dns, ip, domain = self.keepalive_urls
-        ping(ip, verbose=True, timeout=10, size=1, count=2, interval=2)
-
-    def keepalived_dom(self):
-        dns, ip, domain = self.keepalive_urls
-        ping(ip, verbose=True, timeout=10, size=1, count=2, interval=2)
+    def keepalived(self):
+        self.threads_list = []
+        self.ka_queue = queue.Queue()
+        for url in self.urls:
+            t = Threads.KeepAliveDaemon(self.ka_queue)
+            self.threads_list.append(t)
+            t.start()
+            self.ka_queue.put(url)
 
     def get_network_interfaces(self):
         '''
@@ -132,9 +140,7 @@ class Geored_Wifi_Server:
 
 
     def georedundancy(self):
-        ka = Thread(target=self.keepalived_ip, args=())
-        self.threads.append(ka)
-        ka.start()
+        self.keepalived()
 
         while True:
             try:
@@ -173,13 +179,13 @@ class Geored_Wifi_Server:
                     '''TODO: Turn ON network interface'''
                     pass
 
+                time.sleep(self.cycle_len)
+
             except Exception as e:
                 logging.error(f'Unknown {e}')
+                self.queue.put(None)
                 break
-
-            [thread.join() for thread in self.threads]
-            time.sleep(self.cycle_len)
-
+   
 
 wg = Geored_Wifi_Server()
 wg.get_network_interfaces()
