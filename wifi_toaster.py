@@ -2,17 +2,40 @@ import pywifi
 import pywifi.const as const
 import time
 import keyring
-import requests
 import logging
 import time
 import creds
 import subprocess
 import random
+from pythonping import ping
+from threading import Thread
 
 class Geored_Wifi_Server:
     def __init__(self):
         self.wifi = pywifi.PyWiFi()
-        logging.basicConfig(level=logging.INFO)
+        self.keepalive_urls = '8.8.8.8', '192.168.1.1', 'google.com'
+
+        logging.basicConfig(filename='toast.log', encoding='UTF-8', level=logging.DEBUG, format='%(asctime)s [%(name)s] %(message)s')
+        logger = logging.getLogger('WIFI_TOASTER')
+        logger.setLevel(logging.DEBUG)
+
+        self.cycle_len = .6
+        self.threads = []
+        
+    def heartbeats(self):
+        return
+
+    def keepalived_dns(self):
+        dns, ip, domain = self.keepalive_urls
+        ping(dns, verbose=True, timeout=10, size=1, count=2, interval=2)
+    
+    def keepalived_ip(self):
+        dns, ip, domain = self.keepalive_urls
+        ping(ip, verbose=True, timeout=10, size=1, count=2, interval=2)
+
+    def keepalived_dom(self):
+        dns, ip, domain = self.keepalive_urls
+        ping(ip, verbose=True, timeout=10, size=1, count=2, interval=2)
 
     def get_network_interfaces(self):
         '''
@@ -24,9 +47,6 @@ class Geored_Wifi_Server:
 
         for u, w in enumerate(self.ifaces):
             print(f'iface {u}:', w.name())
-
-    def connect_available_iface(self):
-        return
 
     def connect_ap(self, iface, ap):
         iface.remove_all_network_profiles()
@@ -57,11 +77,6 @@ class Geored_Wifi_Server:
         subprocess.Popen('powershell.exe -noprofile "Start-Process -Verb RunAs -Wait powershell.exe -Args -noprofile; netsh interface set interface WiFi disable"',
                          shell=True, stdin=subprocess.PIPE).communicate()
         subprocess.Popen('netsh interface set interface "WiFi" disable', shell=True, stdin=subprocess.PIPE).communicate()
-        
-    def check_network_conn(self):
-        s = requests.Session()
-        s.get('192.168.1.1')
-        self.is_connected = True if s.status == 200 else False
 
     def list_bss_attrs(self, bss):
         '''TODO:
@@ -117,6 +132,10 @@ class Geored_Wifi_Server:
 
 
     def georedundancy(self):
+        ka = Thread(target=self.keepalived_ip, args=())
+        self.threads.append(ka)
+        ka.start()
+
         while True:
             try:
                 self.get_available_aps()
@@ -158,7 +177,8 @@ class Geored_Wifi_Server:
                 logging.error(f'Unknown {e}')
                 break
 
-            time.sleep(.7)
+            [thread.join() for thread in self.threads]
+            time.sleep(self.cycle_len)
 
 
 wg = Geored_Wifi_Server()
