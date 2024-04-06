@@ -4,6 +4,7 @@ import time
 import keyring
 import logging
 import time
+import datetime
 import creds
 import subprocess
 import random
@@ -12,16 +13,11 @@ import os
 import queue as queue
 from pythonping import ping
 
-logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
-os.system('')
-
 class Geored_Wifi_Server:
     def __init__(self):
         self.wifi = pywifi.PyWiFi()
 
-        logging.basicConfig(filename='toast.log', encoding='UTF-8', level=logging.DEBUG, format='%(asctime)s [%(name)s] %(message)s')
-        logger = logging.getLogger('WIFI_TOASTER')
-        logger.setLevel(logging.DEBUG)
+        self.logger = Logger().logging()
 
         self.cycle_len = .6
         self.threads_list = []
@@ -30,15 +26,16 @@ class Geored_Wifi_Server:
     def heartbeats(self):
         return
 
-    def keepalive(self):
-        for url in self.urls:
-            ping(url, verbose=True, timeout=1, size=1, count=1, interval=3) # , count=2, interval=3
+    def keepalive(self, url):
+            response = ping(url, verbose=False, timeout=1, size=1, count=1, interval=1.5)
+            self.logger.info(str(response).split('\n')[0]) # , count=2, interval=3=
 
     def keepalived(self, mode):
         if mode == 'start':
-            t = threading.Thread(target=self.keepalive, daemon=True)
-            self.threads_list.append(t)
-            t.start()
+            for url in self.urls:
+                t = threading.Thread(target=self.keepalive, daemon=True, args=(url,))
+                self.threads_list.append(t)
+                t.start()
 
         elif mode == 'stop':
             for t in self.threads_list:
@@ -53,7 +50,7 @@ class Geored_Wifi_Server:
         self.iface_a = self.ifaces[0]
 
         for u, w in enumerate(self.ifaces):
-            print(f'iface {u}:', w.name())
+            self.logger.info(f'iface {u}:', w.name())
 
     def connect_ap(self, iface, ap):
         iface.remove_all_network_profiles()
@@ -96,7 +93,7 @@ class Geored_Wifi_Server:
             auth = 'Authorized' if i.auth == [] else 'Unauthorized'
             # akm = i.akm
             alg = i.alg
-            print(f'{bssid}: {ssid}', signal, freq, auth, alg)
+            self.logger.info(f'{bssid}: {ssid}', signal, freq, auth, alg)
 
     def get_networks_list(self, iface):
         '''
@@ -128,9 +125,9 @@ class Geored_Wifi_Server:
                 self.software_radio = 'On'
                 self.current_ap_name = current_ap.split('SSID')[1].split(':')[1].split('\n')[0].strip()
         
-            print(f'SW_Radio: {self.software_radio}')
-            print(f'AP_NAME: {self.current_ap_name}')
-            print(f'AP_STATUS: {self.current_ap_status}')
+            self.logger.info(f'SW_Radio: {self.software_radio}')
+            self.logger.info(f'AP_NAME: {self.current_ap_name}')
+            self.logger.info(f'AP_STATUS: {self.current_ap_status}')
 
         else:
             self.software_radio = None
@@ -170,7 +167,7 @@ class Geored_Wifi_Server:
                         pass
 
                     else:
-                        logging.error('Unknown AP or Interface error occurred')
+                        self.logger.error('Unknown AP or Interface error occurred')
 
                 elif self.software_radio == 'Off' or self.software_radio is None:
                     '''TODO: Turn ON network interface'''
@@ -180,7 +177,39 @@ class Geored_Wifi_Server:
                 self.keepalived(mode='stop')
 
             except Exception as e:
-                logging.error(f'Unknown {e}')
+                self.logger.error(f'Unknown {e}')
+
+class Logger:
+    '''Reusable logger class'''
+    def __init__(self):
+        logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+        os.system('')
+
+    def RGB(self, red=None, green=None, blue=None, bg=False):
+        '''Logger prettifier'''
+        if(bg == False and red != None and green != None and blue != None):
+            return f'\u001b[38;2;{red};{green};{blue}m'
+        elif(bg == True and red != None and green != None and blue != None):
+            return f'\u001b[48;2;{red};{green};{blue}m'
+        elif(red == None and green == None and blue == None):
+            return '\u001b[0m'
+
+    def logging(self):
+        # g0 = self.RGB()
+        # g1 = self.RGB(127, 255, 212)
+        # g2 = self.RGB(0, 0, 128)
+        # bold = "\033[1m"
+        # reset = "\033[0m"
+        logging.basicConfig(filename='logs_toast.log', encoding='UTF-8', level=logging.DEBUG, format='%(asctime)s [%(name)s] %(message)s')
+        logger = logging.getLogger('WIFI_TOASTER')
+        logger.setLevel(logging.DEBUG)
+        # ch = logging.StreamHandler()
+        # ch.setLevel(logging.DEBUG)
+        # formatter = logging.Formatter('%(asctime)s,%(msecs)03d {}{}[%(name)s]{}{} %(message)s'.format(bold, g1, g0, reset), '%H:%M:%S')
+        # ch.setFormatter(formatter)
+        # logger.addHandler(ch)
+
+        return logger
 
 wg = Geored_Wifi_Server()
 wg.georedundancy()
