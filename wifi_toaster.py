@@ -7,9 +7,10 @@ import time
 import creds
 import subprocess
 import random
-import Threads
+import threading
 import os
 import queue as queue
+from pythonping import ping
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 os.system('')
@@ -23,27 +24,25 @@ class Geored_Wifi_Server:
         logger.setLevel(logging.DEBUG)
 
         self.cycle_len = .6
-        self.threads = []
-
+        self.threads_list = []
         self.urls = '8.8.8.8', '192.168.1.1', 'google.com'
-
-        # self.keepalive_dict = {
-        #     dns: self.keepalived_dns,
-        #     ip: self.keepalived_ip,
-        #     domain: self.keepalived_dom
-        #     }
                 
     def heartbeats(self):
         return
 
-    def keepalived(self):
-        self.threads_list = []
-        self.ka_queue = queue.Queue()
+    def keepalive(self):
         for url in self.urls:
-            t = Threads.KeepAliveDaemon(self.ka_queue)
+            ping(url, verbose=True, timeout=1, size=1, count=1, interval=3) # , count=2, interval=3
+
+    def keepalived(self, mode):
+        if mode == 'start':
+            t = threading.Thread(target=self.keepalive, daemon=True)
             self.threads_list.append(t)
             t.start()
-            self.ka_queue.put(url)
+
+        elif mode == 'stop':
+            for t in self.threads_list:
+                t.join()
 
     def get_network_interfaces(self):
         '''
@@ -138,12 +137,10 @@ class Geored_Wifi_Server:
             self.current_ap_status = None
             self.current_ap_name = None
 
-
     def georedundancy(self):
-        self.keepalived()
-
         while True:
             try:
+                self.keepalived(mode='start')
                 self.get_available_aps()
 
                 if self.software_radio == 'On':
@@ -179,14 +176,11 @@ class Geored_Wifi_Server:
                     '''TODO: Turn ON network interface'''
                     pass
 
-                time.sleep(self.cycle_len)
+                # time.sleep(self.cycle_len)
+                self.keepalived(mode='stop')
 
             except Exception as e:
                 logging.error(f'Unknown {e}')
-                self.queue.put(None)
-                break
-   
 
 wg = Geored_Wifi_Server()
-wg.get_network_interfaces()
 wg.georedundancy()
