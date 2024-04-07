@@ -2,14 +2,12 @@ import pywifi
 import pywifi.const as const
 import time
 import keyring
-import logging
 import time
-import datetime
 import creds
 import subprocess
 import random
 import threading
-import os
+from logger import Logger
 import queue as queue
 from pythonping import ping
 
@@ -18,7 +16,6 @@ class Geored_Wifi_Server:
         self.wifi = pywifi.PyWiFi()
 
         self.logger = Logger().logging()
-        self.storage = Store()
 
         self.threads_list = []
         self.urls = '8.8.8.8', '192.168.1.1', 'google.com'
@@ -89,9 +86,7 @@ class Geored_Wifi_Server:
         time.sleep(0.7)
         aps = iface.scan_results()
 
-        # self.logging.info(self.list_bss_attrs(aps))
         self.logging.info(aps)
-
         self.aps = aps
 
     def get_network_status(self):
@@ -144,7 +139,8 @@ class Geored_Wifi_Server:
     def keepalive_service(self, url):
         try:
             response = ping(url, verbose=False, timeout=1, size=1, count=1, interval=.8)
-            self.logger.info(str(response).split('\n')[0])
+            response_str = str(response).split('\n')[0].strip()
+            self.logger.info(response_str)
 
             if response.success():
                 self.ping_results.append(True)
@@ -224,41 +220,6 @@ class Geored_Wifi_Server:
 
         self.connect_ap(self.iface_a, target_ap)
         self.logger.info(f'Failover {self.current_ap_name} -> {target_ap}')
-        
-
-class Store:
-    def store(data):
-        '''Stores transfered data'''
-        filename = str(datetime.today().strftime("%d-%m-%Y_%H-%M-%S")) + '.txt'
-        f = open(f'ddbb/{filename}', 'a')
-
-        for line in data:
-            output_string = line + '\n'
-            f.write(output_string)
-
-        f.close()
-
-class Logger:
-    '''Reusable logger class'''
-    def __init__(self):
-        logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
-        os.system('')
-
-    def RGB(self, red=None, green=None, blue=None, bg=False):
-        '''Logger prettifier'''
-        if(bg == False and red != None and green != None and blue != None):
-            return f'\u001b[38;2;{red};{green};{blue}m'
-        elif(bg == True and red != None and green != None and blue != None):
-            return f'\u001b[48;2;{red};{green};{blue}m'
-        elif(red == None and green == None and blue == None):
-            return '\u001b[0m'
-
-    def logging(self):
-        logging.basicConfig(filename='logs_toast.log', filemode='w', encoding='UTF-8', level=logging.DEBUG, format='%(asctime)s [%(name)s] %(message)s')
-        logger = logging.getLogger('WIFI_TOASTER')
-        logger.setLevel(logging.DEBUG)
-
-        return logger
 
 wg = Geored_Wifi_Server()
 wg.georedundancy()
