@@ -15,7 +15,7 @@ class Geored_Wifi_Server:
     def __init__(self):
         self.wifi = pywifi.PyWiFi()
 
-        self.logger = Logger().logging()
+        self.logging = Logger().logging()
 
         self.threads_list = []
         self.urls = '8.8.8.8', '192.168.1.1', 'google.com'
@@ -60,23 +60,26 @@ class Geored_Wifi_Server:
         '''
         self.ifaces = self.wifi.interfaces()
         self.iface_a = self.ifaces[0]
+        # self.logging.info(self.iface_a.name)
 
         for u, w in enumerate(self.ifaces):
-            self.logger.info(f'iface {u}: {w.name()}' )
+            self.logging.info(f'iface {u}: {w.name()}' )
 
-    def list_bss_attrs(self, bss):
+    def list_ap_attrs(self):
         '''List all bss attributes'''
         '''TODO:
-        Retrieve handshake algorithm'''
-        for i in bss:
+        Retrieve handshake algorithm name'''
+
+        for i in list(self.aps):
             bssid = i.bssid
             ssid  = i.ssid
             signal = i.signal
             freq = i.freq
-            auth = 'Authorized' if i.auth == [] else 'Unauthorized'
-            # akm = i.akm
-            alg = i.alg
-            self.logger.info(f'{bssid}: {ssid}', signal, freq, auth, alg)
+            auth = i.auth
+            akm = i.akm
+            # alg = i.alg
+            profit = bssid, ssid, signal, freq, auth, akm
+            self.logging.info(profit)
 
     def get_networks_list(self, iface):
         '''Fetch Available APs list
@@ -85,8 +88,6 @@ class Geored_Wifi_Server:
         iface.scan()
         time.sleep(0.7)
         aps = iface.scan_results()
-
-        self.logging.info(aps)
         self.aps = aps
 
     def get_network_status(self):
@@ -114,10 +115,10 @@ class Geored_Wifi_Server:
                 self.logging.info('AP_STATUS: DISCOVERING, wait %d seconds', disco_wait)
                 time.sleep(disco_wait)
         
-            self.logger.info(f'HW_Radio: {self.hardware_radio}')
-            self.logger.info(f'SW_Radio: {self.software_radio}')
-            self.logger.info(f'AP_NAME: {self.current_ap_name}')
-            self.logger.info(f'AP_STATUS: {self.ap_current_status}')
+            self.logging.info(f'HW_Radio: {self.hardware_radio}')
+            self.logging.info(f'SW_Radio: {self.software_radio}')
+            self.logging.info(f'AP_NAME: {self.current_ap_name}')
+            self.logging.info(f'AP_STATUS: {self.ap_current_status}')
 
         else:
             self.software_radio = None
@@ -140,7 +141,7 @@ class Geored_Wifi_Server:
         try:
             response = ping(url, verbose=False, timeout=1, size=1, count=1, interval=.8)
             response_str = str(response).split('\n')[0].strip()
-            self.logger.info(response_str)
+            self.logging.info(response_str)
 
             if response.success():
                 self.ping_results.append(True)
@@ -175,7 +176,7 @@ class Geored_Wifi_Server:
                 self.failover()
 
             else:
-                self.logger.error('Unknown AP or Interface error occurred')
+                self.logging.error('Unknown AP or Interface error occurred')
 
         elif self.software_radio == 'Off' or self.software_radio is None:
             '''TODO: Turn ON network interface'''
@@ -193,7 +194,7 @@ class Geored_Wifi_Server:
             target_ap = random.choice([creds.ap_a, creds.ap_b])
 
         self.connect_ap(self.iface_a, target_ap)
-        self.logger.info(f'Failover {self.current_ap_name} -> {target_ap}')
+        self.logging.info(f'Failover {self.current_ap_name} -> {target_ap}')
 
     def georedundancy(self):
         while True:
@@ -203,23 +204,27 @@ class Geored_Wifi_Server:
                 self.keepalived(mode='stop')
 
             except Exception as e:
-                self.logger.error(f'Unknown {e}')
+                self.logging.error(f'Unknown {e}')
 
     def test(self):
         self.get_network_interfaces()
-        self.get_network_status()
-        if self.current_ap_name is not None:
+        self.get_networks_list(self.iface_a)
 
-            if self.current_ap_name == creds.ap_b:
-                target_ap = creds.ap_a
-            elif self.current_ap_name == creds.ap_a:
-                target_ap = creds.ap_b
+        # if self.current_ap_name is not None:
 
-        elif self.current_ap_name is None:
-            target_ap = random.choice([creds.ap_a, creds.ap_b])
+        #     if self.current_ap_name == creds.ap_b:
+        #         target_ap = creds.ap_a
+        #     elif self.current_ap_name == creds.ap_a:
+        #         target_ap = creds.ap_b
 
-        self.connect_ap(self.iface_a, target_ap)
-        self.logger.info(f'Failover {self.current_ap_name} -> {target_ap}')
+        # elif self.current_ap_name is None:
+        #     target_ap = random.choice([creds.ap_a, creds.ap_b])
+
+        self.list_ap_attrs()
+
+        # self.connect_ap(self.iface_a, target_ap)
+        # self.logging.info(f'Failover {self.current_ap_name} -> {target_ap}')
 
 wg = Geored_Wifi_Server()
-wg.georedundancy()
+# wg.georedundancy()
+wg.test()
