@@ -13,6 +13,8 @@ class Logger:
         logger.setLevel(logging.DEBUG)
         fh = logging.FileHandler('logs_toast.log')
         fh.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('[%(name)s] %(asctime)s,%(msecs)03d %(levelname)s %(message)s', '%d-%m-%Y %H:%M:%S')
+        fh.setFormatter(formatter)
         logger.addHandler(fh)
 
         return logger
