@@ -43,14 +43,21 @@ class Geored_Wifi_Server:
     def set_network_status_vars(self):
         self.current_ap_names = [self.ap_a_current_name, self.ap_b_current_name]
         self.aps_current_status = [self.ap_a_current_status, self.ap_b_current_status]
+        
         self.hardware_radios = [self.hardware_a_radio, self.hardware_b_radio]
         self.software_radios = [self.software_a_radio, self.software_b_radio]
+
 
     def get_network_status(self):
         '''
         TODO: Improve Regex syntax and avoid iterating over status_lists '''
-        network_status = subprocess.check_output(r'netsh WLAN show interfaces', encoding='utf-8')
-        network_status_list = network_status.split('Name                   :')
+        
+        def parse_status_list():
+            network_status = subprocess.check_output(r'netsh WLAN show interfaces', encoding='utf-8')
+            network_status_list = network_status.split('Name                   :')
+            return network_status, network_status_list
+
+        network_status, network_status_list = parse_status_list()
         ifaces_amount = len(network_status_list) - 1
         network_a_status_list = network_status_list[1].split('\n')
 
@@ -86,35 +93,55 @@ class Geored_Wifi_Server:
                 if 'State' in line:
                     return re.sub(pattern, '', line).strip()
 
+        def process_connected_status(ap = 'a'):
+            ap = 0 if ap =='a' else 1
+            self.current_ap_names[ap] = get_network_name(network_a_status_list)
+            self.hardware_radios[ap] = 'On'
+            self.software_radios[ap] = 'On'
+
+        def process_disconnected_status(ap = 'a'):
+            ap = 0 if ap =='a' else 1
+            private_network_list = network_a_status_list if ap == 'a' else network_b_status_list
+            self.hardware_radios[ap] = get_hardware_radio(private_network_list)
+            self.software_radios[ap] = get_software_radio(private_network_list)
+
         if network_status:
             self.ap_a_current_status = get_status(network_a_status_list)
 
             if self.ap_a_current_status == 'connected':
-                self.ap_a_current_name = get_network_name(network_a_status_list)
-                self.hardware_a_radio = 'On'
-                self.software_a_radio = 'On'
+                process_connected_status()
 
             elif self.ap_a_current_status == 'disconnected':
-                    self.ap_a_current_name = None
-                    self.hardware_a_radio = get_hardware_radio(network_a_status_list)
-                    self.software_a_radio = get_software_radio(network_a_status_list)
+                    process_disconnected_status()
 
-            elif self.ap_a_current_status == 'disconnecting':
-                    time.sleep(5)
+            else:
+                wait_timer_processing = 2
+                waited_processing = 0
+
+                while self.ap_a_current_status in self.ap_processing_status:
+                    self.logging.info(f'AP_STATUS: {self.ap_a_current_status}')
+                    time.sleep(wait_timer_processing)
                     self.ap_a_current_status = get_status(network_a_status_list)
 
-                    if self.ap_a_current_status == 'disconnecting':
+                    if waited_processing > 30:
+                        self.logging.critical(f'AP_STATUS: {self.ap_a_current_status}')
+                        _, network_status_list = parse_status_list()
+                        self.ap_a_current_name = get_network_name(network_a_status_list)
+                        break
+
+                wait_timer_disconnecting = 5
+                waited_disconnecting = 0
+
+                while self.ap_a_current_status == 'disconnecting':
+                    time.sleep(wait_timer_disconnecting)
+                    self.ap_a_current_status = get_status(network_a_status_list)
+
+                    if waited_disconnecting > 15:
                         '''[REMINDER] TODO: Adjust time.sleep if error pops up '''
                         self.logging.error('AP Disconnecting status after disconnecting')
 
-                    self.ap_a_current_name = None
-                    self.hardware_a_radio = get_hardware_radio(network_a_status_list)
-                    self.software_a_radio = get_software_radio(network_a_status_list)
-
-            elif self.ap_a_current_status in self.ap_processing_status:
-                disco_wait = 10 if self.ap_processing_status == 'discovering' else 15
-                self.logging.info(f'AP_STATUS: {self.ap_a_current_status}, wait {disco_wait} seconds')
-                time.sleep(disco_wait)
+                if self.ap_a_current_status == 'disconnected':
+                    process_disconnected_status()
 
             self.logging.info(f'{self.ifaces[0].name()}')
 
