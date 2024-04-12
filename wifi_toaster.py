@@ -47,7 +47,6 @@ class Geored_Wifi_Server:
         self.hardware_radios = [self.hardware_a_radio, self.hardware_b_radio]
         self.software_radios = [self.software_a_radio, self.software_b_radio]
 
-
     def get_network_status(self):
         '''
         TODO: Improve Regex syntax and avoid iterating over status_lists '''
@@ -93,40 +92,43 @@ class Geored_Wifi_Server:
                 if 'State' in line:
                     return re.sub(pattern, '', line).strip()
 
-        def process_connected_status(ap = 'a'):
-            ap = 0 if ap =='a' else 1
-            self.current_ap_names[ap] = get_network_name(network_a_status_list)
+        def process_connected_status(self, ap = 'a'):
+            ap = 0 if ap == 'a' else 1
             self.hardware_radios[ap] = 'On'
             self.software_radios[ap] = 'On'
+            return self.current_ap_names[ap], self.hardware_radios[ap], self.software_radios[ap]
 
-        def process_disconnected_status(ap = 'a'):
-            ap = 0 if ap =='a' else 1
-            private_network_list = network_a_status_list if ap == 'a' else network_b_status_list
+        def process_disconnected_status(self, ap = 'a'):
+            ap = 0 if ap == 'a' else 1
+            private_network_list = network_a_status_list if ap == 0 else network_b_status_list
             self.hardware_radios[ap] = get_hardware_radio(private_network_list)
             self.software_radios[ap] = get_software_radio(private_network_list)
+            return self.hardware_radios[ap], self.software_radios[ap]
 
         if network_status:
             self.ap_a_current_status = get_status(network_a_status_list)
 
             if self.ap_a_current_status == 'connected':
-                process_connected_status()
+                self.ap_a_current_name = get_network_name(network_a_status_list)
+                _, self.hardware_a_radio, self.software_a_radio = process_connected_status(self)
+                
 
             elif self.ap_a_current_status == 'disconnected':
-                    process_disconnected_status()
+                self.hardware_a_radio, self.software_a_radio = process_disconnected_status(self)
 
             else:
                 wait_timer_processing = 2
                 waited_processing = 0
 
                 while self.ap_a_current_status in self.ap_processing_status:
-                    self.logging.info(f'AP_STATUS: {self.ap_a_current_status}')
+                    self.logging.info(f'PROCESSING_AP_STATUS: {self.ap_a_current_status}')
                     time.sleep(wait_timer_processing)
+                    _, network_status_list = parse_status_list()
+                    network_a_status_list = network_status_list[1].split('\n')
                     self.ap_a_current_status = get_status(network_a_status_list)
 
                     if waited_processing > 30:
                         self.logging.critical(f'AP_STATUS: {self.ap_a_current_status}')
-                        _, network_status_list = parse_status_list()
-                        self.ap_a_current_name = get_network_name(network_a_status_list)
                         break
 
                 wait_timer_disconnecting = 5
@@ -134,6 +136,8 @@ class Geored_Wifi_Server:
 
                 while self.ap_a_current_status == 'disconnecting':
                     time.sleep(wait_timer_disconnecting)
+                    _, network_status_list = parse_status_list()
+                    network_a_status_list = network_status_list[1].split('\n')
                     self.ap_a_current_status = get_status(network_a_status_list)
 
                     if waited_disconnecting > 15:
@@ -141,7 +145,7 @@ class Geored_Wifi_Server:
                         self.logging.error('AP Disconnecting status after disconnecting')
 
                 if self.ap_a_current_status == 'disconnected':
-                    process_disconnected_status()
+                    self.hardware_b_radio, self.software_b_radio = process_disconnected_status(self, 'b')
 
             self.logging.info(f'{self.ifaces[0].name()}')
 
@@ -155,18 +159,41 @@ class Geored_Wifi_Server:
 
                 if self.ap_b_current_status == 'connected':
                     self.ap_b_current_name = get_network_name(network_b_status_list)
-                    self.hardware_b_radio_status = 'On'
-                    self.software_b_radio_status = 'On'
+                    _, self.hardware_b_radio, self.software_b_radio = process_connected_status(self, 'b')
 
-                elif self.ap_b_current_status in self.ap_disconnected_status:
-                    self.ap_b_current_name = None
-                    self.hardware_b_radio = get_hardware_radio(network_b_status_list)
-                    self.software_b_radio = get_software_radio(network_b_status_list)
+                elif self.ap_b_current_status == 'disconnected':
+                    self.hardware_b_radio, self.software_b_radio = process_disconnected_status(self, 'b')
 
-                elif self.ap_b_current_status in self.ap_processing_status:
-                    disco_wait = 10 if self.ap_processing_status == 'discovering' else 15
-                    self.logging.info(f'AP_STATUS: {self.ap_b_current_status}, wait {disco_wait} seconds')
-                    time.sleep(disco_wait)
+                else:
+                    wait_timer_processing = 2
+                    waited_processing = 0
+
+                    while self.ap_b_current_status in self.ap_processing_status:
+                        self.logging.info(f'PROCESSING_AP_STATUS: {self.ap_b_current_status}')
+                        time.sleep(wait_timer_processing)
+                        _, network_status_list = parse_status_list()
+                        network_b_status_list = network_status_list[2].split('\n')
+                        self.ap_b_current_status = get_status(network_b_status_list)
+
+                        if waited_processing > 30:
+                            self.logging.critical(f'AP_STATUS: {self.ap_b_current_status}')
+                            break
+
+                    wait_timer_disconnecting = 5
+                    waited_disconnecting = 0
+
+                    while self.ap_b_current_status == 'disconnecting':
+                        time.sleep(wait_timer_disconnecting)
+                        _, network_status_list = parse_status_list()
+                        network_b_status_list = network_status_list[2].split('\n')
+                        self.ap_b_current_status = get_status(network_b_status_list)
+
+                        if waited_disconnecting > 15:
+                            '''[REMINDER] TODO: Adjust time.sleep if error pops up '''
+                            self.logging.error('AP Disconnecting status after disconnecting')
+
+                    if self.ap_b_current_status == 'disconnected':
+                        self.hardware_b_radio, self.software_b_radio = process_disconnected_status(self, 'b')
 
                 self.logging.info(f'{self.ifaces[1].name()}')
 
@@ -332,10 +359,10 @@ class Geored_Wifi_Server:
 
         if self.software_radios[iface] == 'On':
             if self.aps_current_status[iface] in self.ap_disconnected_status:
-                
                 # self.get_network_interfaces()
                 # if len(self.iface_a.name()) == 0:
                 #     raise AssertionError('No network interfaces available')
+                self.logging.info('No interfaces available')
                 
                 self.geored_failover(iface)
 
@@ -373,9 +400,9 @@ class Geored_Wifi_Server:
         self.logging.info(f'Failover OK - {self.current_ap_names[iface]} -> {target_ap}' if resolution \
                           else f'Did not failover {self.current_ap_names[iface]} -> {target_ap}')
         
-        if resolution == False:
-            '''ha_failover'''
-            return
+        # if resolution == False:
+        #     '''ha_failover'''
+        #     return
 
     def ha_failover(self):
         '''
@@ -389,15 +416,12 @@ class Geored_Wifi_Server:
             self.healthcheck()
             self.keepalived(mode='stop')
 
-            # except Exception as e:
-            #     self.logging.error(f'Unknown {e}')
-
     def test(self):
         # self.get_network_status()
         # self.get_networks_list(self.iface_a)
         # self.healthcheck()
         # self.list_ap_attrs()
-        # self.connect_ap(self.iface_a, creds.ap_b)     # target_ap
+        # self.connect_ap(self.iface_a, creds.ap_b)
         # self.logging.info(f'Failover {self.current_ap_name} -> {target_ap}')
         pass
 
