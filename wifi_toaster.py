@@ -11,6 +11,7 @@ from logger import Logger
 import queue as queue
 from pythonping import ping
 import re
+from sys import exit as sexit
 
 class Geored_Wifi_Server:
     def __init__(self):
@@ -49,10 +50,21 @@ class Geored_Wifi_Server:
 
     def get_network_status(self):
         '''
-        TODO: Improve Regex syntax and avoid iterating over status_lists '''
+        TODO: Improve Regex syntax and avoid iterating over status_lists
+        
+        Classify which network interface drivers are disabled (flagged with 'Hosted network status  : Not available')
+        '''
         
         def parse_status_list():
             network_status = subprocess.check_output(r'netsh WLAN show interfaces', encoding='utf-8')
+
+            if 'There is no wireless interface on the system' in network_status:
+                '''Rare case exception
+                
+                TODO: Enable Network Interface from Device Manager'''
+                self.logging.critical('Enable Network Interface from Device Manager')
+                sexit()
+
             network_status_list = network_status.split('Name                   :')
             return network_status, network_status_list
 
@@ -214,15 +226,19 @@ class Geored_Wifi_Server:
             [const.IFACE_DISCONNECTED, const.IFACE_INACTIVE]
         
     def enable_hardware_radio(self):
-        '''Enables hardware WiFi radio'''
+        '''Enables hardware WiFi radio
+        
+        The requested operation requires elevation (Run as administrator)'''
         subprocess.Popen('netsh interface set interface "WiFi" enable', shell=True).communicate()
 
     def disable_hardware_radio(self):
-        '''Disables hardware WiFi radio'''
-        '''TODO: Provide powershelll privileges'''
-        subprocess.Popen('powershell.exe -noprofile "Start-Process -Verb RunAs -Wait powershell.exe -Args -noprofile; netsh interface set interface WiFi disable"',
+        '''Disables hardware WiFi radio
+
+        TODO: The requested operation requires elevation (Run as administrator)'''
+        sh = subprocess.Popen('powershell.exe -noprofile "Start-Process -Verb RunAs -Wait powershell.exe -Args -noprofile; netsh interface set interface WiFi disable"',
                          shell=True, stdin=subprocess.PIPE).communicate()
-        subprocess.Popen('netsh interface set interface "WiFi" disable', shell=True, stdin=subprocess.PIPE).communicate()
+        sh.stdin.write('netsh interface set interface')
+        # subprocess.Popen('netsh interface set interface "WiFi" disable', shell=True, stdin=subprocess.PIPE).communicate()
 
     def list_ap_attrs(self):
         '''List all bss attributes'''
@@ -329,20 +345,18 @@ class Geored_Wifi_Server:
         aps = iface.scan_results()
         self.aps = aps
 
-    def keepalived(self, mode):
-        if mode == 'start':
-            for url in self.urls:
-                t = threading.Thread(target=self.keepalive_service, daemon=True, args=(url,))
-                self.threads_list.append(t)
-                t.start()
+    def keepalived(self):
+        for url in self.urls:
+            t = threading.Thread(target=self.keepalive_service, daemon=True, args=(url,))
+            self.threads_list.append(t)
+            t.start()
 
-        elif mode == 'stop':
-            for t in self.threads_list:
-                t.join()
-                self.ping_results = []
+        for t in self.threads_list:
+            t.join()
+            self.ping_results = []
 
     def keepalive_service(self, url):
-        '''Appends a bool to ping_results'''
+        '''Remove try except'''
         try:
             response = ping(url, verbose=False, timeout=1, size=1, count=1, interval=.8)
             response_str = str(response).split('\n')[0].strip()
@@ -353,12 +367,29 @@ class Geored_Wifi_Server:
         except Exception:
             self.logging.error(f'KeepAlive.d: NO_RESOLUTION for {url}')
             self.ping_results.append(False)
+
+    def georedundancy(self):
+        while True:
+            self.keepalived()
+            self.healthcheck()
             
     def healthcheck(self, iface = 0):
+        if not any(self.ping_results):
+            self.geored_failover(iface)
+
         self.get_network_status()
 
         if self.software_radios[iface] == 'On':
-            if self.aps_current_status[iface] in self.ap_disconnected_status:
+            if self.aps_current_status[iface] == 'connected':
+                pass
+
+            elif self.aps_current_status[iface] is None:
+                '''Rare case exception
+                
+                TODO: Enable Network Interface from Device Manager'''
+                pass
+        
+            elif self.aps_current_status[iface] in self.ap_disconnected_status:
                 # self.get_network_interfaces()
                 # if len(self.iface_a.name()) == 0:
                 #     raise AssertionError('No network interfaces available')
@@ -366,25 +397,14 @@ class Geored_Wifi_Server:
                 
                 self.geored_failover(iface)
 
-            elif self.aps_current_status[iface] is None:
-                '''TODO: Enable Network Interface from Device Manager'''
-                pass
-
-            elif self.aps_current_status[iface] == 'connected':
-                pass
-
-            elif not any(self.ping_results):
-                self.geored_failover(iface)
-
             else:
                 self.logging.error('Unknown AP or Interface error occurred')
 
-        elif self.software_radios[iface] in ('Off', None):
+        elif self.software_radios[iface] == 'Off':
             '''TODO: Turn ON network interface'''
             pass
 
     def geored_failover(self, iface = 0):
-
         if self.current_ap_names[iface] is not None:
 
             if self.current_ap_names[iface] == creds.ap_b:
@@ -410,12 +430,6 @@ class Geored_Wifi_Server:
         Put iface 1 up
         Run healthcheck'''
 
-    def georedundancy(self):
-        while True:
-            self.keepalived(mode='start')
-            self.healthcheck()
-            self.keepalived(mode='stop')
-
     def test(self):
         # self.get_network_status()
         # self.get_networks_list(self.iface_a)
@@ -423,8 +437,10 @@ class Geored_Wifi_Server:
         # self.list_ap_attrs()
         # self.connect_ap(self.iface_a, creds.ap_b)
         # self.logging.info(f'Failover {self.current_ap_name} -> {target_ap}')
+
+        self.disable_hardware_radio()
         pass
 
 wg = Geored_Wifi_Server()
-wg.georedundancy()
-# wg.test()
+# wg.georedundancy()
+wg.test()
